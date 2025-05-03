@@ -45,11 +45,10 @@ router.get("/90mins", async (req, res) => {
   }
 });
 
-// OneFootball endpoint with lazy Puppeteer launch
+// OneFootball endpoint with improved Puppeteer navigation
 let browser;
 router.get("/onefootball", async (req, res) => {
   try {
-    // Fetch list
     const { data: htmlList } = await axios.get("https://onefootball.com/en/home");
     const $ = cheerio.load(htmlList);
     let items = [];
@@ -61,9 +60,8 @@ router.get("/onefootball", async (req, res) => {
       const img = $(el).find("img").attr("src");
       if (title && url) items.push({ title, url, img });
     });
-    items = items.slice(0, 5); // limit to avoid long runs
+    items = items.slice(0, 3);  // limit to 3 to reduce load
 
-    // Launch browser if needed
     if (!browser) {
       try {
         browser = await puppeteer.launch({
@@ -71,8 +69,8 @@ router.get("/onefootball", async (req, res) => {
           executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
         });
       } catch (err) {
-        console.error("Puppeteer launch failed", err);
-        return res.status(500).json({ error: "Failed to launch browser" });
+        console.error("Puppeteer launch failed:", err);
+        return res.status(500).json({ error: "Browser launch failed" });
       }
     }
 
@@ -80,16 +78,18 @@ router.get("/onefootball", async (req, res) => {
     for (const item of items) {
       try {
         const page = await browser.newPage();
-        page.setDefaultNavigationTimeout(20000);
-        await page.goto(item.url, { waitUntil: "networkidle2" });
+        page.setDefaultNavigationTimeout(60000);  // 60s timeout
+        await page.goto(item.url, { waitUntil: "domcontentloaded", timeout: 60000 });
+        // Optionally wait for main article container
+        await page.waitForSelector(".article-detail__body p", { timeout: 5000 }).catch(() => {});
         const content = await page.$$eval(
-          "p",
+          ".article-detail__body p",
           ps => ps.map(p => p.innerText.trim()).filter(t => t.length > 30).join("\n\n")
         );
         await page.close();
         detailed.push({ ...item, content });
       } catch (e) {
-        console.warn(`Error fetching detail for ${item.url}`, e);
+        console.warn(`Timeout or error fetching ${item.url}:`, e);
         detailed.push({ ...item, content: null });
       }
     }
@@ -100,7 +100,8 @@ router.get("/onefootball", async (req, res) => {
   }
 });
 
-// ESPN endpoint
+// Other endpoints (espn, goal, fourfourtwo) unchanged
+// ESPN
 router.get("/espn", async (req, res) => {
   try {
     const { data: html } = await axios.get("https://www.espn.in/football/");
@@ -119,8 +120,7 @@ router.get("/espn", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch ESPN" });
   }
 });
-
-// GOAL endpoint
+// GOAL
 router.get("/goal", async (req, res) => {
   try {
     const { data: html } = await axios.get("https://www.goal.com/en-in/news");
@@ -140,8 +140,7 @@ router.get("/goal", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch GOAL" });
   }
 });
-
-// FourFourTwo endpoints
+// FourFourTwo
 const fftw = [
   { slug: "epl", path: "premier-league" },
   { slug: "laliga", path: "la-liga" },
@@ -171,7 +170,7 @@ fftw.forEach(({ slug, path }) => {
   });
 });
 
-// Mount router
+// Mount routes
 app.use("/news", router);
 app.use("/api/news", router);
 
