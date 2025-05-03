@@ -2,7 +2,6 @@ const express = require("express");
 const PORT = process.env.PORT || 8000;
 const cheerio = require("cheerio");
 const axios = require("axios");
-const puppeteer = require("puppeteer-core");
 const serverless = require("serverless-http");
 
 const app = express();
@@ -45,10 +44,10 @@ router.get("/90mins", async (req, res) => {
   }
 });
 
-// OneFootball endpoint with improved Puppeteer navigation
-let browser;
+// OneFootball via __NEXT_DATA__ parsing
 router.get("/onefootball", async (req, res) => {
   try {
+    // 1. Get list from main page
     const { data: htmlList } = await axios.get("https://onefootball.com/en/home");
     const $ = cheerio.load(htmlList);
     let items = [];
@@ -60,39 +59,36 @@ router.get("/onefootball", async (req, res) => {
       const img = $(el).find("img").attr("src");
       if (title && url) items.push({ title, url, img });
     });
-    items = items.slice(0, 3);  // limit to 3 to reduce load
+    items = items.slice(0, 5);
 
-    if (!browser) {
-      try {
-        browser = await puppeteer.launch({
-          args: ["--no-sandbox", "--disable-setuid-sandbox"],
-          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
-        });
-      } catch (err) {
-        console.error("Puppeteer launch failed:", err);
-        return res.status(500).json({ error: "Browser launch failed" });
-      }
-    }
+    // 2. For each article, fetch HTML and parse JSON data
+    const detailed = await Promise.all(
+      items.map(async item => {
+        try {
+          const { data: htmlDetail } = await axios.get(item.url);
+          const $$ = cheerio.load(htmlDetail);
+          const raw = $$("script#__NEXT_DATA__").html();
+          let content = null;
+          if (raw) {
+            const json = JSON.parse(raw);
+            // Try locating article blocks
+            const blocks = json.props?.pageProps?.article?.blocks ||
+                           json.props?.pageProps?.data?.article?.blocks;
+            if (Array.isArray(blocks)) {
+              const paras = blocks
+                .filter(b => b.type === 'paragraph' && b.data?.text)
+                .map(b => b.data.text.trim());
+              content = paras.join("\n\n");
+            }
+          }
+          return { ...item, content };
+        } catch (e) {
+          console.warn(`Error parsing article for ${item.url}`, e);
+          return { ...item, content: null };
+        }
+      })
+    );
 
-    const detailed = [];
-    for (const item of items) {
-      try {
-        const page = await browser.newPage();
-        page.setDefaultNavigationTimeout(60000);  // 60s timeout
-        await page.goto(item.url, { waitUntil: "domcontentloaded", timeout: 60000 });
-        // Optionally wait for main article container
-        await page.waitForSelector(".article-detail__body p", { timeout: 5000 }).catch(() => {});
-        const content = await page.$$eval(
-          ".article-detail__body p",
-          ps => ps.map(p => p.innerText.trim()).filter(t => t.length > 30).join("\n\n")
-        );
-        await page.close();
-        detailed.push({ ...item, content });
-      } catch (e) {
-        console.warn(`Timeout or error fetching ${item.url}:`, e);
-        detailed.push({ ...item, content: null });
-      }
-    }
     res.json(detailed);
   } catch (err) {
     console.error(err);
@@ -100,8 +96,7 @@ router.get("/onefootball", async (req, res) => {
   }
 });
 
-// Other endpoints (espn, goal, fourfourtwo) unchanged
-// ESPN
+// ESPN endpoint
 router.get("/espn", async (req, res) => {
   try {
     const { data: html } = await axios.get("https://www.espn.in/football/");
@@ -120,7 +115,8 @@ router.get("/espn", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch ESPN" });
   }
 });
-// GOAL
+
+// GOAL endpoint
 router.get("/goal", async (req, res) => {
   try {
     const { data: html } = await axios.get("https://www.goal.com/en-in/news");
@@ -140,7 +136,8 @@ router.get("/goal", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch GOAL" });
   }
 });
-// FourFourTwo
+
+// FourFourTwo endpoints
 const fftw = [
   { slug: "epl", path: "premier-league" },
   { slug: "laliga", path: "la-liga" },
