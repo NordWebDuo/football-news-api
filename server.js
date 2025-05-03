@@ -8,7 +8,7 @@ const app = express();
 const router = express.Router();
 
 // Arrays pentru fiecare sursă
-tconst news_array_ninenine = [];
+const news_array_ninenine = [];
 const news_array_onefootball = [];
 const news_array_espn = [];
 const news_array_goaldotcom = [];
