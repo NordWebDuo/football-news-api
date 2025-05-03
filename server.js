@@ -2,23 +2,18 @@ const express = require("express");
 const PORT = process.env.PORT || 8000;
 const cheerio = require("cheerio");
 const axios = require("axios");
+const puppeteer = require("puppeteer-core");
 const serverless = require("serverless-http");
 
 const app = express();
 const router = express.Router();
 
-// Arrays pentru fiecare sursă
-const news_array_ninenine = [];
-const news_array_onefootball = [];
-const news_array_espn = [];
-const news_array_goaldotcom = [];
-const news_array_fftw_epl = [];
-const news_array_fftw_laliga = [];
-const news_array_fftw_ucl = [];
-const news_array_fftw_bundesliga = [];
+// Health checks
+app.get("/", (req, res) => res.send("OK"));
+app.get("/health", (req, res) => res.json({ status: "OK" }));
 
-// Ruta principală listă surse
-router.get("/news", (req, res) => {
+// List of sources
+app.get("/news", (req, res) => {
   res.json([
     { title: "90mins", path: "90mins" },
     { title: "One Football", path: "onefootball" },
@@ -31,67 +26,66 @@ router.get("/news", (req, res) => {
   ]);
 });
 
-// Extragere 90mins (nemodificat)
-router.get("/news/90mins", async (req, res) => {
+// 90mins endpoint
+router.get("/90mins", async (req, res) => {
   try {
     const { data: html } = await axios.get("https://www.90min.com/categories/football-news");
     const $ = cheerio.load(html);
-    const validPatterns = [
+    const valid = [
       /^https:\/\/www\.90min\.com\/[a-z0-9-]+$/,
       /^https:\/\/www\.90min\.com\/features\/[a-z0-9-]+$/
     ];
+    const list = [];
     $("a").each((_, el) => {
       const title = $(el).find("header h3").text().trim();
-      const url   = $(el).attr("href");
-      if (title && validPatterns.some(rx => rx.test(url))) {
-        news_array_ninenine.push({ title, url });
-      }
+      const url = $(el).attr("href");
+      if (title && valid.some(rx => rx.test(url))) list.push({ title, url });
     });
-    res.json(news_array_ninenine);
+    res.json(list);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch 90mins" });
   }
 });
 
-// ROUTA ONEFOOTBALL cu content extras
-router.get("/news/onefootball", async (req, res) => {
+// OneFootball endpoint with Puppeteer-core
+router.get("/onefootball", async (req, res) => {
   try {
-    // 1. Preluăm lista de articole
     const { data: htmlList } = await axios.get("https://onefootball.com/en/home");
     const $ = cheerio.load(htmlList);
     const items = [];
-
     $("li").each((_, el) => {
-      const a     = $(el).find("a").eq(1);
-      const title = a.find("p").eq(0).text().trim();
-      const href  = a.attr("href");
-      const url   = href ? `https://onefootball.com${href}` : null;
-      const img   = $(el).find("img").attr("src");
-      if (title && url) {
-        items.push({ title, url, img });
-      }
+      const a = $(el).find("a").eq(1);
+      const title = a.find("p").first().text().trim();
+      const href = a.attr("href");
+      const url = href ? `https://onefootball.com${href}` : null;
+      const img = $(el).find("img").attr("src");
+      if (title && url) items.push({ title, url, img });
     });
 
-    // 2. Pentru fiecare articol, extragem content
-    const detailed = await Promise.all(
-      items.map(async item => {
-        try {
-          const { data: htmlDetail } = await axios.get(item.url);
-          const $$ = cheerio.load(htmlDetail);
-          // Selector pentru conținut (părți de text)
-          const content = $$(".article-detail__body p")
-            .map((i, p) => $$(p).text().trim())
-            .get()
-            .join("\n\n");
-          return { ...item, content };
-        } catch (e) {
-          console.warn(`Could not fetch content for ${item.url}`);
-          return { ...item, content: null };
-        }
-      })
-    );
-
+    const browser = await puppeteer.launch({
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
+    });
+    const detailed = [];
+    for (const item of items) {
+      try {
+        const page = await browser.newPage();
+        await page.goto(item.url, { waitUntil: "networkidle2" });
+        const content = await page.$$eval("p", ps =>
+          ps
+            .map(p => p.innerText.trim())
+            .filter(t => t && t.length > 30 && !/^(OneFootball Videos|Related News|Watch on OneFootball|Follow OneFootball|Share this article)/.test(t))
+            .join("\n\n")
+        );
+        await page.close();
+        detailed.push({ ...item, content });
+      } catch (e) {
+        console.warn(`Error fetching content for ${item.url}`, e);
+        detailed.push({ ...item, content: null });
+      }
+    }
+    await browser.close();
     res.json(detailed);
   } catch (err) {
     console.error(err);
@@ -99,18 +93,82 @@ router.get("/news/onefootball", async (req, res) => {
   }
 });
 
-// Restul rutelor (ESPn, GOAL, FourFourTwo) pot rămâne neschimbate...
+// ESPN endpoint
+router.get("/espn", async (req, res) => {
+  try {
+    const { data: html } = await axios.get("https://www.espn.in/football/");
+    const $ = cheerio.load(html);
+    const list = [];
+    $("a").each((_, el) => {
+      const title = $(el).find("h2").text().trim();
+      const href = $(el).attr("href");
+      const url = href ? `https://www.espn.in${href}` : null;
+      const img = $(el).find("img").attr("data-default-src");
+      if (title && url && url.includes("story")) list.push({ title, url, img });
+    });
+    res.json(list);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch ESPN" });
+  }
+});
 
-//  router.get('/news/espn', ...)
-//  router.get('/news/goal', ...)
-//  router.get('/news/fourfourtwo/epl', ...)
-//  router.get('/news/fourfourtwo/laliga', ...)
-//  router.get('/news/fourfourtwo/ucl', ...)
-//  router.get('/news/fourfourtwo/bundesliga', ...)
+// GOAL endpoint
+router.get("/goal", async (req, res) => {
+  try {
+    const { data: html } = await axios.get("https://www.goal.com/en-in/news");
+    const $ = cheerio.load(html);
+    const list = [];
+    $("li").each((_, el) => {
+      const href = $(el).find("a").attr("href");
+      const url = href ? `https://goal.com${href}` : null;
+      let title = $(el).find("h3").text().trim();
+      const img = $(el).find("img").attr("src");
+      title = title.replace(/Getty|Images|\/Goal/gi, "").replace(/[^a-zA-Z0-9\s\-.]/g, "").trim();
+      if (title && url && url.includes("lists")) list.push({ title, url, img });
+    });
+    res.json(list);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch GOAL" });
+  }
+});
 
-app.use("/api", router);
+// FourFourTwo endpoints
+const fftw = [
+  { slug: "epl", path: "premier-league" },
+  { slug: "laliga", path: "la-liga" },
+  { slug: "ucl", path: "champions-league" },
+  { slug: "bundesliga", path: "bundesliga" }
+];
+fftw.forEach(({ slug, path }) => {
+  router.get(`/${slug}`, async (req, res) => {
+    try {
+      const { data: html } = await axios.get(`https://www.fourfourtwo.com/${path}`);
+      const $ = cheerio.load(html);
+      const list = [];
+      $(".small").each((_, el) => {
+        const link = $(el).find("a").attr("href");
+        const title = $(el).find("h3.article-name").text().trim();
+        const srcset = $(el).find("img").attr("data-srcset") || "";
+        const img = srcset.split(" ")[0] || null;
+        let desc = $(el).find("p.synopsis").text().trim();
+        desc = desc.replace(/^(La Liga\n|IN THE MAG\n|HOW TO WATCH\n|EXCLUSIVE\n)/g, "").trim();
+        if (link && title) list.push({ title, url: link, img, short_desc: desc });
+      });
+      res.json(list);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: `Failed to fetch FourFourTwo ${slug}` });
+    }
+  });
+});
 
-// Run local
+// Mount router under /news and /api/news
+app.use("/news", router);
+app.use("/api/news", router);
+
+// Local run
 if (require.main === module) {
   app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
 }

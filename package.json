@@ -9,7 +9,7 @@
     "express": "...",
     "axios": "...",
     "cheerio": "...",
-    "puppeteer": "^23.0.0",
+   "puppeteer-core": "^23.0.0",
     "serverless-http": "..."
   }
   
