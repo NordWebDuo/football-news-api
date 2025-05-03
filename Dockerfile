@@ -1,6 +1,6 @@
 FROM node:18-slim
 
-# Instalăm Chromium și dependențele lui
+# Instalăm Chromium și dependențele lui pentru Puppeteer-core
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
@@ -21,14 +21,13 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /usr/src/app
 
 # Copiem doar package.json și instalăm dependențele
-COPY package.json package-lock.json ./
+COPY package.json ./
 RUN npm install --production
 
 # Copiem restul codului
 COPY . .
 
-# Pachetul puppeteer-core nu descarcă automat Chromium,
-# deci îi spunem unde să-l găsească.
+# Spunem Puppeteer-core unde găsește Chromium
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 EXPOSE 8000
