@@ -12,6 +12,12 @@ const router = express.Router();
 app.get("/", (req, res) => res.send("OK"));
 app.get("/health", (req, res) => res.json({ status: "OK" }));
 
+// Pre-launch Puppeteer browser once
+const browserPromise = puppeteer.launch({
+  args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
+});
+
 // List of sources
 app.get("/news", (req, res) => {
   res.json([
@@ -48,12 +54,12 @@ router.get("/90mins", async (req, res) => {
   }
 });
 
-// OneFootball endpoint with Puppeteer-core
+// OneFootball endpoint optimized
 router.get("/onefootball", async (req, res) => {
   try {
     const { data: htmlList } = await axios.get("https://onefootball.com/en/home");
     const $ = cheerio.load(htmlList);
-    const items = [];
+    let items = [];
     $("li").each((_, el) => {
       const a = $(el).find("a").eq(1);
       const title = a.find("p").first().text().trim();
@@ -62,20 +68,21 @@ router.get("/onefootball", async (req, res) => {
       const img = $(el).find("img").attr("src");
       if (title && url) items.push({ title, url, img });
     });
+    // Limit items to first 5 to avoid timeout
+    items = items.slice(0, 5);
 
-    const browser = await puppeteer.launch({
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
-    });
+    const browser = await browserPromise;
     const detailed = [];
     for (const item of items) {
       try {
         const page = await browser.newPage();
+        page.setDefaultNavigationTimeout(30000);
         await page.goto(item.url, { waitUntil: "networkidle2" });
-        const content = await page.$$eval("p", ps =>
-          ps
+        const content = await page.$$eval(
+          "p",
+          ps => ps
             .map(p => p.innerText.trim())
-            .filter(t => t && t.length > 30 && !/^(OneFootball Videos|Related News|Watch on OneFootball|Follow OneFootball|Share this article)/.test(t))
+            .filter(t => t && t.length > 30)
             .join("\n\n")
         );
         await page.close();
@@ -85,7 +92,6 @@ router.get("/onefootball", async (req, res) => {
         detailed.push({ ...item, content: null });
       }
     }
-    await browser.close();
     res.json(detailed);
   } catch (err) {
     console.error(err);
