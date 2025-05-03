@@ -44,10 +44,10 @@ router.get("/90mins", async (req, res) => {
   }
 });
 
-// OneFootball via __NEXT_DATA__ parsing
+// OneFootball endpoint (parse <noscript> fallback)
 router.get("/onefootball", async (req, res) => {
   try {
-    // 1. Get list from main page
+    // 1) Preluăm lista de articole
     const { data: htmlList } = await axios.get("https://onefootball.com/en/home");
     const $ = cheerio.load(htmlList);
     let items = [];
@@ -61,29 +61,23 @@ router.get("/onefootball", async (req, res) => {
     });
     items = items.slice(0, 5);
 
-    // 2. For each article, fetch HTML and parse JSON data
+    // 2) Pentru fiecare articol, extragem conținutul din <noscript>
     const detailed = await Promise.all(
       items.map(async item => {
         try {
           const { data: htmlDetail } = await axios.get(item.url);
-          const $$ = cheerio.load(htmlDetail);
-          const raw = $$("script#__NEXT_DATA__").html();
-          let content = null;
-          if (raw) {
-            const json = JSON.parse(raw);
-            // Try locating article blocks
-            const blocks = json.props?.pageProps?.article?.blocks ||
-                           json.props?.pageProps?.data?.article?.blocks;
-            if (Array.isArray(blocks)) {
-              const paras = blocks
-                .filter(b => b.type === 'paragraph' && b.data?.text)
-                .map(b => b.data.text.trim());
-              content = paras.join("\n\n");
-            }
-          }
+          // Extragem HTML-ul din tag-ul noscript
+          const $raw = cheerio.load(htmlDetail);
+          const noscriptHtml = $raw('noscript').html() || '';
+          const $ns = cheerio.load(noscriptHtml);
+          const paragraphs = $ns('p')
+            .map((i, p) => $ns(p).text().trim())
+            .get()
+            .filter(txt => txt.length > 30);
+          const content = paragraphs.join("\n\n");
           return { ...item, content };
-        } catch (e) {
-          console.warn(`Error parsing article for ${item.url}`, e);
+        } catch (err) {
+          console.error(`Error parsing article ${item.url}:`, err);
           return { ...item, content: null };
         }
       })
