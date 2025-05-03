@@ -1,0 +1,9 @@
+[project]
+  port = 8000
+  dockerfile = "Dockerfile"
+
+[build]
+# (Optional overrides)
+
+[deploy]
+# Uses CMD from Dockerfile
