@@ -12,12 +12,6 @@ const router = express.Router();
 app.get("/", (req, res) => res.send("OK"));
 app.get("/health", (req, res) => res.json({ status: "OK" }));
 
-// Pre-launch Puppeteer browser once
-const browserPromise = puppeteer.launch({
-  args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
-});
-
 // List of sources
 app.get("/news", (req, res) => {
   res.json([
@@ -37,10 +31,7 @@ router.get("/90mins", async (req, res) => {
   try {
     const { data: html } = await axios.get("https://www.90min.com/categories/football-news");
     const $ = cheerio.load(html);
-    const valid = [
-      /^https:\/\/www\.90min\.com\/[a-z0-9-]+$/,
-      /^https:\/\/www\.90min\.com\/features\/[a-z0-9-]+$/
-    ];
+    const valid = [/^https:\/\/www\.90min\.com\/[a-z0-9-]+$/, /^https:\/\/www\.90min\.com\/features\/[a-z0-9-]+$/];
     const list = [];
     $("a").each((_, el) => {
       const title = $(el).find("header h3").text().trim();
@@ -54,9 +45,11 @@ router.get("/90mins", async (req, res) => {
   }
 });
 
-// OneFootball endpoint optimized
+// OneFootball endpoint with lazy Puppeteer launch
+let browser;
 router.get("/onefootball", async (req, res) => {
   try {
+    // Fetch list
     const { data: htmlList } = await axios.get("https://onefootball.com/en/home");
     const $ = cheerio.load(htmlList);
     let items = [];
@@ -68,27 +61,35 @@ router.get("/onefootball", async (req, res) => {
       const img = $(el).find("img").attr("src");
       if (title && url) items.push({ title, url, img });
     });
-    // Limit items to first 5 to avoid timeout
-    items = items.slice(0, 5);
+    items = items.slice(0, 5); // limit to avoid long runs
 
-    const browser = await browserPromise;
+    // Launch browser if needed
+    if (!browser) {
+      try {
+        browser = await puppeteer.launch({
+          args: ["--no-sandbox", "--disable-setuid-sandbox"],
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
+        });
+      } catch (err) {
+        console.error("Puppeteer launch failed", err);
+        return res.status(500).json({ error: "Failed to launch browser" });
+      }
+    }
+
     const detailed = [];
     for (const item of items) {
       try {
         const page = await browser.newPage();
-        page.setDefaultNavigationTimeout(30000);
+        page.setDefaultNavigationTimeout(20000);
         await page.goto(item.url, { waitUntil: "networkidle2" });
         const content = await page.$$eval(
           "p",
-          ps => ps
-            .map(p => p.innerText.trim())
-            .filter(t => t && t.length > 30)
-            .join("\n\n")
+          ps => ps.map(p => p.innerText.trim()).filter(t => t.length > 30).join("\n\n")
         );
         await page.close();
         detailed.push({ ...item, content });
       } catch (e) {
-        console.warn(`Error fetching content for ${item.url}`, e);
+        console.warn(`Error fetching detail for ${item.url}`, e);
         detailed.push({ ...item, content: null });
       }
     }
@@ -170,7 +171,7 @@ fftw.forEach(({ slug, path }) => {
   });
 });
 
-// Mount router under /news and /api/news
+// Mount router
 app.use("/news", router);
 app.use("/api/news", router);
 
