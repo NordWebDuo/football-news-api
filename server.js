@@ -45,9 +45,10 @@ router.get("/90mins", async (req, res) => {
 });
 
 // OneFootball endpoint (parse <noscript> fallback)
+// OneFootball endpoint parsing SSR article content
 router.get("/onefootball", async (req, res) => {
   try {
-    // 1) Preluăm lista de articole
+    // 1) Get list of articles
     const { data: htmlList } = await axios.get("https://onefootball.com/en/home");
     const $ = cheerio.load(htmlList);
     let items = [];
@@ -58,6 +59,44 @@ router.get("/onefootball", async (req, res) => {
       const url = href ? `https://onefootball.com${href}` : null;
       const img = $(el).find("img").attr("src");
       if (title && url) items.push({ title, url, img });
+    });
+    items = items.slice(0, 5);  // limit
+
+    // 2) For each article, fetch HTML & parse paragraphs
+    const detailed = await Promise.all(
+      items.map(async item => {
+        try {
+          const { data: htmlDetail } = await axios.get(item.url);
+          const $$ = cheerio.load(htmlDetail);
+
+          // Try SSR-rendered paragraphs inside <article>
+          let paragraphs = $$("article p").map((i, p) => $$(p).text().trim()).get();
+
+          // If none found, fall back to <noscript>
+          if (!paragraphs.length) {
+            const noscriptHtml = $$('noscript').html() || '';
+            const $_ns = cheerio.load(noscriptHtml);
+            paragraphs = $_ns('p').map((i, p) => $_ns(p).text().trim()).get();
+          }
+
+          // Filter short
+          const content = paragraphs.filter(t => t.length > 30).join("
+
+");
+          return { ...item, content: content || null };
+        } catch (e) {
+          console.warn(`Error parsing article ${item.url}:`, e);
+          return { ...item, content: null };
+        }
+      })
+    );
+
+    res.json(detailed);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch OneFootball" });
+  }
+});
     });
     items = items.slice(0, 5);
 
