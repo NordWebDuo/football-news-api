@@ -6,11 +6,10 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "...",
-    "axios": "...",
-    "cheerio": "...",
-   "puppeteer-core": "^23.0.0",
-    "serverless-http": "..."
+    "express": "^4.18.2",
+    "cheerio": "^1.0.0-rc.12",
+    "axios": "^1.4.0",
+    "puppeteer-core": "^23.0.0",
+    "serverless-http": "^3.1.0"
   }
-  
 }
