@@ -27,7 +27,6 @@ router.get("/news", (req, res) => {
     { title: "4-4-2 EPL", path: "fourfourtwo/epl" },
     { title: "4-4-2 LaLiga", path: "fourfourtwo/laliga" },
     { title: "4-4-2 UCL", path: "fourfourtwo/ucl" },
-    { title: "4-4-2 Bundesliga", path: "fourfourtwo/bundesliga" }
   ]);
 });
 
