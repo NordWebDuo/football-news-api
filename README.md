@@ -1,21 +1,21 @@
-# Football News API
+# Football News API (npm version)
 
-Acest micro-serviciu oferă endpoint-uri pentru extragerea știrilor de fotbal de pe diferite site-uri.
+This project scrapes football news from multiple sites and exposes them via Express.
 
-## Cum să folosești
+## Local setup
 
-1. Instalează dependențele:
+1. Install dependencies:
    ```bash
-   yarn install
+   npm install
    ```
 
-2. Pornește local:
+2. Run locally:
    ```bash
-   yarn start
+   npm start
    ```
-   Serverul va rula pe http://localhost:8000
+   Server runs at http://localhost:8000
 
-3. Endpoint-uri disponibile:
+3. Endpoints:
    - GET /api/news
    - GET /api/news/90mins
    - GET /api/news/onefootball
@@ -26,7 +26,9 @@ Acest micro-serviciu oferă endpoint-uri pentru extragerea știrilor de fotbal d
    - GET /api/news/fourfourtwo/ucl
    - GET /api/news/fourfourtwo/bundesliga
 
-4. Deploy pe Coolify:
-   - În Coolify, adaugă un **Git-Based Application** cu acest repo.
-   - Port: `8000`
-   - Deckpanel-ul va folosi `Dockerfile` pentru build și CMD pentru start.
+## Docker
+
+Build and run with:
+```bash
+docker-compose up --build
+```

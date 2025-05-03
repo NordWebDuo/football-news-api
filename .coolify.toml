@@ -3,7 +3,7 @@
   dockerfile = "Dockerfile"
 
 [build]
-# (Optional overrides)
+# using Docker Compose
 
 [deploy]
-# Uses CMD from Dockerfile
+# uses default start command
