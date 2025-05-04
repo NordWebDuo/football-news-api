@@ -7,9 +7,10 @@ const serverless = require("serverless-http");
 const app = express();
 const router = express.Router();
 
-// Health checks
+// Health/Ping endpoints
 app.get("/", (req, res) => res.send("OK"));
 app.get("/health", (req, res) => res.json({ status: "OK" }));
+app.get("/ping", (req, res) => res.json({ pong: true }));
 
 // List of available sources
 app.get("/news", (req, res) => {
@@ -25,7 +26,7 @@ app.get("/news", (req, res) => {
   ]);
 });
 
-// 90mins
+// 90mins endpoint
 router.get("/90mins", async (req, res) => {
   try {
     const { data } = await axios.get("https://www.90min.com/categories/football-news");
@@ -45,7 +46,7 @@ router.get("/90mins", async (req, res) => {
   }
 });
 
-// One Football
+// One Football endpoint
 router.get("/onefootball", async (req, res) => {
   try {
     const { data } = await axios.get("https://onefootball.com/en/home");
@@ -65,7 +66,7 @@ router.get("/onefootball", async (req, res) => {
   }
 });
 
-// ESPN
+// ESPN endpoint
 router.get("/espn", async (req, res) => {
   try {
     const { data } = await axios.get("https://www.espn.in/football/");
@@ -84,7 +85,7 @@ router.get("/espn", async (req, res) => {
   }
 });
 
-// GOAL
+// GOAL endpoint
 router.get("/goal", async (req, res) => {
   try {
     const { data } = await axios.get("https://www.goal.com/en-in/news");
@@ -104,7 +105,7 @@ router.get("/goal", async (req, res) => {
   }
 });
 
-// FourFourTwo routes
+// FourFourTwo endpoints
 const fftw = [
   { slug: "epl", path: "premier-league" },
   { slug: "laliga", path: "la-liga" },
@@ -119,8 +120,7 @@ fftw.forEach(({ slug, path }) => {
       const list = [];
       $(".small").each((_, el) => {
         const title = $(el).find("h3.article-name").text().trim();
-        const url = $(el).find("a").attr("href");
-        const srcset = $(el).find("img").attr("data-srcset") || "";
+        const url = $(el).find("a").attr("href"); const srcset = $(el).find("img").attr("data-srcset") || "";
         const img = srcset.split(" ")[0] || null;
         if (title && url) list.push({ title, url, img });
       });
@@ -132,8 +132,8 @@ fftw.forEach(({ slug, path }) => {
 });
 
 // Mount router
-app.use("/api", router);
 app.use("/news", router);
+app.use("/api", router);
 
 // Start server
 if (require.main === module) {
