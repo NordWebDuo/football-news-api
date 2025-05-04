@@ -1,34 +1,16 @@
-FROM node:18-slim
-
-# Instalăm Chromium și dependențele lui pentru Puppeteer-core
-RUN apt-get update && apt-get install -y \
-    chromium \
-    fonts-liberation \
-    libnss3 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libgtk-3-0 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcups2 \
-    libxss1 \
-  --no-install-recommends && rm -rf /var/lib/apt/lists/*
+FROM node:18-alpine
 
 WORKDIR /usr/src/app
 
-# Copiem doar package.json și instalăm dependențele
+# Install dependencies
 COPY package.json ./
 RUN npm install --production
 
-# Copiem restul codului
-COPY . .
+# Copy application files
+COPY server.js ./
+COPY README.md ./
+COPY .gitignore ./
 
-# Spunem Puppeteer-core unde găsește Chromium
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
+# Expose port and run
 EXPOSE 8000
 CMD ["node", "server.js"]

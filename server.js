@@ -11,7 +11,7 @@ const router = express.Router();
 app.get("/", (req, res) => res.send("OK"));
 app.get("/health", (req, res) => res.json({ status: "OK" }));
 
-// List of sources
+// List of available sources
 app.get("/news", (req, res) => {
   res.json([
     { title: "90mins", path: "90mins" },
@@ -25,115 +25,51 @@ app.get("/news", (req, res) => {
   ]);
 });
 
-// 90mins endpoint
+// 90mins
 router.get("/90mins", async (req, res) => {
   try {
-    const { data: html } = await axios.get("https://www.90min.com/categories/football-news");
-    const $ = cheerio.load(html);
+    const { data } = await axios.get("https://www.90min.com/categories/football-news");
+    const $ = cheerio.load(data);
     const valid = [/^https:\/\/www\.90min\.com\/[a-z0-9-]+$/, /^https:\/\/www\.90min\.com\/features\/[a-z0-9-]+$/];
     const list = [];
     $("a").each((_, el) => {
       const title = $(el).find("header h3").text().trim();
       const url = $(el).attr("href");
-      if (title && valid.some(rx => rx.test(url))) list.push({ title, url });
+      if (title && valid.some(rx => rx.test(url))) {
+        list.push({ title, url, img: null });
+      }
     });
     res.json(list);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch 90mins" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// OneFootball endpoint (parse <noscript> fallback)
-// OneFootball endpoint parsing SSR article content
+// One Football
 router.get("/onefootball", async (req, res) => {
   try {
-    // 1) Get list of articles
-    const { data: htmlList } = await axios.get("https://onefootball.com/en/home");
-    const $ = cheerio.load(htmlList);
-    let items = [];
+    const { data } = await axios.get("https://onefootball.com/en/home");
+    const $ = cheerio.load(data);
+    const list = [];
     $("li").each((_, el) => {
       const a = $(el).find("a").eq(1);
       const title = a.find("p").first().text().trim();
       const href = a.attr("href");
       const url = href ? `https://onefootball.com${href}` : null;
       const img = $(el).find("img").attr("src");
-      if (title && url) items.push({ title, url, img });
+      if (title && url) list.push({ title, url, img });
     });
-    items = items.slice(0, 5);  // limit
-
-    // 2) For each article, fetch HTML & parse paragraphs
-    const detailed = await Promise.all(
-      items.map(async item => {
-        try {
-          const { data: htmlDetail } = await axios.get(item.url);
-          const $$ = cheerio.load(htmlDetail);
-
-          // Try SSR-rendered paragraphs inside <article>
-          let paragraphs = $$("article p").map((i, p) => $$(p).text().trim()).get();
-
-          // If none found, fall back to <noscript>
-          if (!paragraphs.length) {
-            const noscriptHtml = $$('noscript').html() || '';
-            const $_ns = cheerio.load(noscriptHtml);
-            paragraphs = $_ns('p').map((i, p) => $_ns(p).text().trim()).get();
-          }
-
-          // Filter short
-          const content = paragraphs.filter(t => t.length > 30).join("
-
-");
-          return { ...item, content: content || null };
-        } catch (e) {
-          console.warn(`Error parsing article ${item.url}:`, e);
-          return { ...item, content: null };
-        }
-      })
-    );
-
-    res.json(detailed);
+    res.json(list);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch OneFootball" });
-  }
-});
-    });
-    items = items.slice(0, 5);
-
-    // 2) Pentru fiecare articol, extragem conținutul din <noscript>
-    const detailed = await Promise.all(
-      items.map(async item => {
-        try {
-          const { data: htmlDetail } = await axios.get(item.url);
-          // Extragem HTML-ul din tag-ul noscript
-          const $raw = cheerio.load(htmlDetail);
-          const noscriptHtml = $raw('noscript').html() || '';
-          const $ns = cheerio.load(noscriptHtml);
-          const paragraphs = $ns('p')
-            .map((i, p) => $ns(p).text().trim())
-            .get()
-            .filter(txt => txt.length > 30);
-          const content = paragraphs.join("\n\n");
-          return { ...item, content };
-        } catch (err) {
-          console.error(`Error parsing article ${item.url}:`, err);
-          return { ...item, content: null };
-        }
-      })
-    );
-
-    res.json(detailed);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch OneFootball" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ESPN endpoint
+// ESPN
 router.get("/espn", async (req, res) => {
   try {
-    const { data: html } = await axios.get("https://www.espn.in/football/");
-    const $ = cheerio.load(html);
+    const { data } = await axios.get("https://www.espn.in/football/");
+    const $ = cheerio.load(data);
     const list = [];
     $("a").each((_, el) => {
       const title = $(el).find("h2").text().trim();
@@ -144,33 +80,31 @@ router.get("/espn", async (req, res) => {
     });
     res.json(list);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch ESPN" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// GOAL endpoint
+// GOAL
 router.get("/goal", async (req, res) => {
   try {
-    const { data: html } = await axios.get("https://www.goal.com/en-in/news");
-    const $ = cheerio.load(html);
+    const { data } = await axios.get("https://www.goal.com/en-in/news");
+    const $ = cheerio.load(data);
     const list = [];
     $("li").each((_, el) => {
       const href = $(el).find("a").attr("href");
       const url = href ? `https://goal.com${href}` : null;
       let title = $(el).find("h3").text().trim();
+      title = title.replace(/Getty|Images|\/Goal/gi, "").replace(/[^\w\s\-.]/g, "").trim();
       const img = $(el).find("img").attr("src");
-      title = title.replace(/Getty|Images|\/Goal/gi, "").replace(/[^a-zA-Z0-9\s\-.]/g, "").trim();
-      if (title && url && url.includes("lists")) list.push({ title, url, img });
+      if (title && url) list.push({ title, url, img });
     });
     res.json(list);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch GOAL" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// FourFourTwo endpoints
+// FourFourTwo routes
 const fftw = [
   { slug: "epl", path: "premier-league" },
   { slug: "laliga", path: "la-liga" },
@@ -178,33 +112,30 @@ const fftw = [
   { slug: "bundesliga", path: "bundesliga" }
 ];
 fftw.forEach(({ slug, path }) => {
-  router.get(`/${slug}`, async (req, res) => {
+  router.get(`/fourfourtwo/${slug}`, async (req, res) => {
     try {
-      const { data: html } = await axios.get(`https://www.fourfourtwo.com/${path}`);
-      const $ = cheerio.load(html);
+      const { data } = await axios.get(`https://www.fourfourtwo.com/${path}`);
+      const $ = cheerio.load(data);
       const list = [];
       $(".small").each((_, el) => {
-        const link = $(el).find("a").attr("href");
         const title = $(el).find("h3.article-name").text().trim();
+        const url = $(el).find("a").attr("href");
         const srcset = $(el).find("img").attr("data-srcset") || "";
         const img = srcset.split(" ")[0] || null;
-        let desc = $(el).find("p.synopsis").text().trim();
-        desc = desc.replace(/^(La Liga\n|IN THE MAG\n|HOW TO WATCH\n|EXCLUSIVE\n)/g, "").trim();
-        if (link && title) list.push({ title, url: link, img, short_desc: desc });
+        if (title && url) list.push({ title, url, img });
       });
       res.json(list);
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: `Failed to fetch FourFourTwo ${slug}` });
+      res.status(500).json({ error: err.message });
     }
   });
 });
 
-// Mount routes
+// Mount router
+app.use("/api", router);
 app.use("/news", router);
-app.use("/api/news", router);
 
-// Local run
+// Start server
 if (require.main === module) {
   app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
 }
